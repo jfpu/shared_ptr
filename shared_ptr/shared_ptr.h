@@ -73,26 +73,69 @@ public:
     
 };
 
-    // shared_ptr specialized algorithms.
+// shared_ptr specialized algorithms.
+template<typename Y>
+inline void swap(shared_ptr<Y>& spa, shared_ptr<Y>& spb) {
+    spa.swap(spb);
+}
+
+template<typename T, typename Y>
+inline shared_ptr<T> static_pointer_cast(const shared_ptr<Y>& r) {
+    return shared_ptr<T>(r, __static_cast_tag());
+}
+
+template<typename T, typename Y>
+inline shared_ptr<T> const_pointer_cast(const shared_ptr<Y>& r) {
+    return shared_ptr<T>(r, __const_cast_tag());
+}
+
+template<typename T, typename Y>
+inline shared_ptr<T> dynamic_pointer_cast(const shared_ptr<Y>& r) {
+    return shared_ptr<T>(r, __dynamic_cast_tag());
+}
+
+
+// The actual shared_ptr, with forwarding constructors and assignment operators.
+template<typename T>
+class weak_ptr : public __weak_ptr<T> {
+public:
+    weak_ptr() : __weak_ptr<T>() {}
+
     template<typename Y>
-    inline void swap(shared_ptr<Y>& spa, shared_ptr<Y>& spb) {
-        spa.swap(spb);
+    weak_ptr(const weak_ptr<Y>& r) : __weak_ptr<T>(r) {}
+
+    template<typename Y>
+    weak_ptr(const shared_ptr<Y>& r) : __weak_ptr<T>(r) {}
+
+    template<typename Y>
+    weak_ptr& operator=(const weak_ptr<Y>& r) {
+        this->__weak_ptr<T>::operator=(r);
     }
 
-    template<typename T, typename Y>
-    inline shared_ptr<T> static_pointer_cast(const shared_ptr<Y>& r) {
-        return shared_ptr<T>(r, __static_cast_tag());
+    template<typename Y>
+    weak_ptr& operator=(const shared_ptr<Y>& r) {
+        this->__weak_ptr<T>::operator=(r);
     }
 
-    template<typename T, typename Y>
-    inline shared_ptr<T> const_pointer_cast(const shared_ptr<Y>& r) {
-        return shared_ptr<T>(r, __const_cast_tag());
+    shared_ptr<T> lock() const {
+#ifdef __GTHREADS
+        if(this->expired())
+            return shared_ptr<T>();
+
+        __try {
+            return shared_ptr<T>(*this);
+        } __catch(const bad_weak_ptr&) {
+            return shared_ptr<T>();
+        }
+#else
+        return this->expired() ? shared_ptr<T>()
+                               : shared_ptr<T>(*this);
+#endif
     }
 
-    template<typename T, typename Y>
-    inline shared_ptr<T> dynamic_pointer_cast(const shared_ptr<Y>& r) {
-        return shared_ptr<T>(r, __dynamic_cast_tag());
-    }
+
+};
+
 
 }
 

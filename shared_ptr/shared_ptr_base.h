@@ -69,7 +69,7 @@ public:
         typedef int _IsComplete[sizeof(Y)];
         __enable_shared_from_this_helper(_M_refcount, __p, __p);
         #endif
-	}
+    }
 
     template<typename D>
     __shared_ptr(std::nullptr_t p, D d) : px(NULL), pn(p, d) {}
@@ -134,7 +134,7 @@ public:
       : px(dynamic_cast<element_type*>(r.px)), pn(r.pn) {
         if(NULL == px)
             pn = shared_count();
-    }
+    }
     
     void reset() {
         this_type().swap(*this);
@@ -233,7 +233,8 @@ public:
 #if !defined(__GXX_EXPERIMENTAL_CXX0X__) || _GLIBCXX_USE_DEPRECATED
     template<typename Y>
     __shared_ptr& operator=(std::auto_ptr<Y>& r) {
-        __shared_ptr(std::move(r)).swap(*this);
+        __shared_ptr(r).swap(*this);
+        // __shared_ptr(std::move(r)).swap(*this);
         return *this;
     }
 #endif
@@ -330,6 +331,104 @@ inline D* get_deleter(const __shared_ptr<Y>& p) {
 
 template<typename T>
 class __weak_ptr {
+public:
+    typedef T element_type;
+    typedef T* pointer_type;
+    typedef __weak_ptr<T> this_type;
+private:
+    pointer_type px;
+    weak_count pn;
+
+public:
+    __weak_ptr() : px(NULL), pn() {}
+    
+
+    // It is not possible to avoid spurious access violations since in multithreaded
+    // programs r.px may bt invalidated at any point.
+    template<typename Y>
+    __weak_ptr(const __weak_ptr<Y>& r) : pn(r.pn) {
+        __glibcxx_function_requires(_ConvertibleConcept<Y*, T*>);
+        px = r.lock().get();
+    }
+
+    template<typename Y>
+    __weak_ptr(const __shared_ptr<Y>& r) : px(r.px), pn(r.pn) {
+        __glibcxx_function_requires(_ConvertibleConcept<Y*, T*>);
+    }
+
+    template<typename Y>
+    __weak_ptr& operator=(const __weak_ptr<Y>& r) {
+        if(*this != r) {
+            px = r.lock().get();
+            pn = r.pn;
+        }
+        return *this;
+    }
+
+    template<typename Y>
+    __weak_ptr& operator=(const __shared_ptr<Y>& r) {
+        if(*this != r) {
+            px = r.px;
+            pn = r.pn;
+        }
+        return *this;
+    }
+
+    __shared_ptr<T> lock() const {
+#ifndef __GTHREADS
+        if(expired())
+            return __shared_ptr<element_type>();
+
+        __try {
+            return __shared_ptr<element_type>(*this);
+        } __catch(const bad_weak_ptr&) {
+            // Q: How can we get here?
+            // A: Another thread may have invalidated r after the use_count test above
+            return __shared_ptr<element_type>();
+        }
+#else
+        return expired() ? __shared_ptr<element_type>()
+                         : __shared_ptr<element_type>(*this);
+#endif
+    }
+
+    long use_count() const {
+        return pn.use_count();
+    }
+
+    bool expired() const {
+        return 0 == pn.use_count();
+    }
+
+    void reset() {
+        __weak_ptr().swap(*this);
+    }
+
+    void swap(__weak_ptr& r) {
+        std::swap(px, r.px);
+        pn.swap(r.pn);
+    }
+
+private:
+    void m_assign(T* ptr, const shared_count& refcount) {
+        px = ptr;
+        pn = refcount;
+    }
+
+    template<typename Y >
+    bool m_less(const __weak_ptr<Y>& rhs) const {
+        return pn < rhs.pn;
+    }
+
+    template<typename Y> friend class __shared_ptr;
+    template<typename Y> friend class __weak_ptr;
+    // friend class __enable_shared_from_this<T>;
+    //  friend class enable_shared_from_this<T>;
+
+    template<typename Y>
+    friend inline bool operator<(const __weak_ptr& lhs, const __weak_ptr<Y>& rhs) {
+        return lhs.m_less(rhs);
+    }
 
 };
 
